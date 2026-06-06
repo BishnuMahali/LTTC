@@ -50,7 +50,7 @@ def detect_hardware_acceleration():
             info["recommended"] = "cuda"
             for i in range(torch.cuda.device_count()):
                 info["devices"].append(torch.cuda.get_device_name(i))
-    except: pass
+    except Exception: pass
     return info
 
 def extract_audio(video_path, audio_path):
@@ -58,7 +58,7 @@ def extract_audio(video_path, audio_path):
     try:
         subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return True
-    except: return False
+    except Exception: return False
 
 class STCGui:
     def __init__(self, root):
@@ -177,7 +177,7 @@ class STCGui:
                         self.key_var.set(decoded_key)
                     if "model" in cfg:
                         self.model_var.set(cfg["model"])
-        except: pass
+        except Exception: pass
 
     def save_settings(self):
         try:
@@ -186,7 +186,7 @@ class STCGui:
             if key: cfg["key_enc"] = base64.b64encode(key.encode()).decode()
             cfg["model"] = self.model_var.get()
             with open(CONFIG_FILE, "w") as f: json.dump(cfg, f)
-        except: pass
+        except Exception: pass
 
     def write_log(self, msg): self.log_queue.put(msg)
     def process_logs(self):
@@ -194,7 +194,7 @@ class STCGui:
             while True:
                 self.log_text.insert(tk.END, f"> {self.log_queue.get_nowait()}\n")
                 self.log_text.see(tk.END)
-        except: pass
+        except queue.Empty: pass
         self.root.after(100, self.process_logs)
 
     def browse_file(self):
