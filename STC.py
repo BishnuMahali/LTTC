@@ -58,7 +58,7 @@ def extract_audio(video_path, audio_path):
     try:
         subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return True
-    except: return False
+    except Exception: return False
 
 class STCGui:
     def __init__(self, root):
