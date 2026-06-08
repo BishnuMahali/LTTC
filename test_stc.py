@@ -4,6 +4,9 @@ import subprocess
 import os
 import sys
 
+# Ensure SRC directory is in path before importing STC
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "SRC"))
+
 # Mocking modules that are not installed to allow importing STC
 sys.modules["requests"] = MagicMock()
 sys.modules["pydub"] = MagicMock()
