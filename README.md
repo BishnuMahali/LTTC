@@ -62,21 +62,6 @@ MIT License - Copyright (c) 2026 Bishnu Mahali
 
 ---
 
-# 🔴 STRICT ENGINEERING MANDATES
-
-## 1. PROJECT INTEGRITY FIRST
-- **NEVER** remove, simplify, or alter core features, technical logic, or advanced functions unless explicitly instructed by the user.
-- All existing functionality must be preserved with 100% fidelity.
-
-## 2. GUI & STYLING PROTOCOLS
-- When working on GUI/Design, treat the underlying engine code as **READ-ONLY** unless changes are strictly required for UI data-binding.
-- All UI elements must strictly follow system-aware Light/Dark mode themes.
-
-## 3. ARCHITECTURAL PRESERVATION
-- Respect the advanced nature of the tools (VMAF, hardware acceleration, multi-pass logic). 
-
----
-
 ## 🤝 Support & Connect
 
 These projects are simple utility scripts built to solve everyday problems. If you find them helpful in your workflow and would like to support me, any small contribution is deeply appreciated! ❤️
