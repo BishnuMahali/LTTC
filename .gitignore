@@ -1,23 +1,31 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Environments
 .venv/
-venv/
-env/
+__pycache__/
+
+# Project Folders
+LOGS/
+TEMP/
+SNAPSHOT/
 build/
 dist/
+*.egg-info/
 
-# Config and secrets
-.lttc_config.json
-.stc_config.json
-.sarvam_key
+# Configuration (Secrets)
+CONFIG/.sarvam_key
+CONFIG/.stc_config.json
+CONFIG/.lttc_config.json
 
-# Generated media/transcription outputs
-*.srt
-*.vtt
-*.lttc_temp.wav
-temp_audio.wav
-temp_audio_full.wav
-temp_c_*.wav
-chunk_*.wav
-c_*.wav
+# Documentation
+*.md
+!README.md
+GEMINI.md
+AI_RULES.md
+BUG_DATABASE.md
+FEATURE_MAP.md
+PROJECT_MEMORY.md
+ROADMAP.md
+ALPHA/
+BETA/
+ALPHA
+BETA
+TEST/

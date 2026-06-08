@@ -1,6 +1,7 @@
 # Sarvam Timed Captions (STC) - One-Click Setup & Launch Script
 try {
     $ErrorActionPreference = "Stop"
+    Set-Location $PSScriptRoot
 
     Clear-Host
     Write-Host "====================================================" -ForegroundColor Cyan
@@ -63,7 +64,7 @@ try {
 
     # 6. Launch
     Write-Host "Starting Dashboard..." -ForegroundColor Green
-    python STC.py
+    python SRC/STC.py
     if ($LASTEXITCODE -ne 0) {
         throw "Application crashed with exit code $LASTEXITCODE."
     }
