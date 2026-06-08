@@ -7,14 +7,10 @@ import sys
 # Ensure SRC directory is in path before importing STC
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "SRC"))
 
-# Mocking modules that are not installed to allow importing STC
+# Mocking only non-GUI external modules that are not needed for class definitions
 sys.modules["requests"] = MagicMock()
 sys.modules["pydub"] = MagicMock()
 sys.modules["pysrt"] = MagicMock()
-sys.modules["tkinter"] = MagicMock()
-sys.modules["tkinter.filedialog"] = MagicMock()
-sys.modules["tkinter.messagebox"] = MagicMock()
-sys.modules["tkinter.ttk"] = MagicMock()
 
 # Ensure subprocess.CREATE_NO_WINDOW exists for testing on non-Windows
 if not hasattr(subprocess, "CREATE_NO_WINDOW"):

@@ -3,3 +3,5 @@ openai-whisper
 pydub
 pysrt
 requests
+customtkinter
+tkinterdnd2

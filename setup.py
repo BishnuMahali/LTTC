@@ -3,6 +3,7 @@ from setuptools import setup
 setup(
     name="sarvam-timed-captions",
     version="1.0.0",
+    package_dir={"": "SRC"},
     py_modules=["STC"],
     install_requires=[
         "numpy<2.0",
@@ -10,6 +11,8 @@ setup(
         "pydub",
         "pysrt",
         "requests",
+        "customtkinter",
+        "tkinterdnd2",
     ],
     entry_points={
         "console_scripts": [

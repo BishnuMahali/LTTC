@@ -17,7 +17,9 @@ import json
 import base64
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+import customtkinter as ctk
+from tkinterdnd2 import TkinterDnD, DND_FILES
 from pydub import AudioSegment
 import pysrt
 
@@ -35,6 +37,10 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, ".stc_config.json")
 # Ensure core directories exist
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Set customtkinter appearance and theme
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
 def cleanup_temp():
     """Wipes the TEMP directory to keep root clean."""
@@ -93,12 +99,15 @@ def check_whisper_model_cached(model_name):
         pass
     return False
 
-class STCGui:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Sarvam Timed Captions - Dashboard")
-        self.root.geometry("780x780")
-        self.root.minsize(750, 680)
+class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
+    def __init__(self):
+        super().__init__()
+        # Initialize drag and drop library
+        self.TkdndVersion = TkinterDnD._require(self)
+        
+        self.title("Sarvam Timed Captions - Dashboard")
+        self.geometry("820x780")
+        self.minsize(760, 680)
         
         self.log_queue = queue.Queue()
         
@@ -114,8 +123,8 @@ class STCGui:
         self.chunk_len_var = tk.StringVar(value="5")
         self.chunking_mode_var = tk.StringVar(value="throttle")
         self.enable_chunking_var = tk.BooleanVar(value=True)
+        self.file_info_var = tk.StringVar(value="No media file selected")
 
-        self.setup_styles()
         self.build_ui()
         
         # 2. Load settings into variables
@@ -124,136 +133,40 @@ class STCGui:
         # 3. Setup UI based on loaded settings
         self.toggle_engine_ui()
         
-        # 4. Bind auto-save to changes
+        # 4. Bind auto-save and UI updates to changes
+        self.engine_var.trace_add("write", lambda *args: self.handle_engine_change())
+        self.enable_chunking_var.trace_add("write", lambda *args: self.update_chunking_controls_visibility())
+        self.sarvam_plan_var.trace_add("write", lambda *args: self.update_custom_rpm_visibility())
+        self.model_var.trace_add("write", lambda *args: self.update_whisper_status_label())
+        
         for var in [self.engine_var, self.lang_var, self.model_var, self.key_var,
                     self.sarvam_plan_var, self.sarvam_custom_rpm_var, self.chunk_len_var,
                     self.chunking_mode_var, self.enable_chunking_var]:
             var.trace_add("write", lambda *args: self.save_settings())
 
-        self.root.after(100, self.process_logs)
+        # Register Drag and Drop for the whole window
+        self.drop_target_register(DND_FILES)
+        self.dnd_bind('<<Drop>>', self.on_file_drop)
 
-    def setup_styles(self):
-        style = ttk.Style()
-        style.theme_use('clam')
-        bg_color, card_color, accent_color, text_color = "#0f172a", "#1e293b", "#6366f1", "#f8fafc"
-        self.root.configure(bg=bg_color)
-        
-        style.configure("TFrame", background=bg_color)
-        style.configure("Card.TFrame", background=card_color, borderwidth=1, relief="solid", bordercolor="#334155")
-        style.configure("TLabel", background=card_color, foreground=text_color, font=("Segoe UI", 10))
-        style.configure("Header.TLabel", background=card_color, foreground="#38bdf8", font=("Segoe UI", 11, "bold"))
-        style.configure("Status.TLabel", background=card_color, foreground="#10b981", font=("Segoe UI", 10, "bold"))
-        
-        # Primary Action Button
-        style.configure("TButton", 
-                        background=accent_color, 
-                        foreground="#ffffff", 
-                        bordercolor=accent_color, 
-                        lightcolor=accent_color, 
-                        darkcolor=accent_color, 
-                        font=("Segoe UI", 10, "bold"), 
-                        padding=(15, 6),
-                        focuscolor="none")
-        style.map("TButton", 
-                  background=[("active", "#4f46e5"), ("disabled", "#334155")],
-                  bordercolor=[("active", "#4f46e5"), ("disabled", "#334155")],
-                  lightcolor=[("active", "#4f46e5"), ("disabled", "#334155")],
-                  darkcolor=[("active", "#4f46e5"), ("disabled", "#334155")],
-                  foreground=[("disabled", "#94a3b8")])
-                  
-        # Secondary Action Button
-        style.configure("Secondary.TButton", 
-                        background="#334155", 
-                        foreground=text_color, 
-                        bordercolor="#334155", 
-                        lightcolor="#334155", 
-                        darkcolor="#334155", 
-                        font=("Segoe UI", 10), 
-                        padding=(10, 5),
-                        focuscolor="none")
-        style.map("Secondary.TButton", 
-                  background=[("active", "#475569"), ("disabled", "#1e293b")],
-                  bordercolor=[("active", "#475569"), ("disabled", "#1e293b")],
-                  lightcolor=[("active", "#475569"), ("disabled", "#1e293b")],
-                  darkcolor=[("active", "#475569"), ("disabled", "#1e293b")],
-                  foreground=[("disabled", "#64748b")])
-
-        # Modern Progress Bar
-        style.configure("Horizontal.TProgressbar", background="#38bdf8", troughcolor="#0f172a", bordercolor="#334155")
-        
-        # Checkbuttons and Radiobuttons
-        style.configure("TCheckbutton", 
-                        background=card_color, 
-                        foreground=text_color, 
-                        font=("Segoe UI", 10), 
-                        padding=4,
-                        indicatorcolor="#0f172a",
-                        indicatorbackground=card_color)
-        style.map("TCheckbutton", 
-                  background=[("active", card_color)],
-                  foreground=[("active", text_color)],
-                  indicatorbackground=[("selected", "#38bdf8"), ("!selected", "#0f172a")],
-                  indicatorcolor=[("selected", "#0f172a")])
-
-        style.configure("TRadiobutton", 
-                        background=card_color, 
-                        foreground=text_color, 
-                        font=("Segoe UI", 10), 
-                        padding=4,
-                        indicatorcolor="#0f172a",
-                        indicatorbackground=card_color)
-        style.map("TRadiobutton", 
-                  background=[("active", card_color)],
-                  foreground=[("active", text_color)],
-                  indicatorbackground=[("selected", "#38bdf8"), ("!selected", "#0f172a")],
-                  indicatorcolor=[("selected", "#0f172a")])
-
-        # Modern Text Entries & Comboboxes with interactive focus borders
-        style.configure("TEntry", 
-                        fieldbackground="#0f172a", 
-                        foreground=text_color, 
-                        bordercolor="#334155", 
-                        lightcolor="#334155", 
-                        darkcolor="#334155", 
-                        insertcolor=text_color,
-                        padding=6)
-        style.map("TEntry", 
-                  bordercolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
-                  lightcolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
-                  darkcolor=[("focus", "#38bdf8"), ("!focus", "#334155")])
-
-        style.configure("TCombobox", 
-                        fieldbackground="#0f172a", 
-                        foreground=text_color, 
-                        bordercolor="#334155", 
-                        lightcolor="#334155", 
-                        darkcolor="#334155", 
-                        arrowcolor="#94a3b8",
-                        padding=6)
-        style.map("TCombobox", 
-                  fieldbackground=[("readonly", "#0f172a")],
-                  foreground=[("readonly", text_color)],
-                  bordercolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
-                  lightcolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
-                  darkcolor=[("focus", "#38bdf8"), ("!focus", "#334155")])
+        self.after(100, self.process_logs)
 
     def build_ui(self):
         # Main Dashboard Container
-        container = ttk.Frame(self.root, padding=20)
-        container.pack(fill="both", expand=True)
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=20)
 
         # Header section (Title & Subtitle)
-        header_frame = ttk.Frame(container, style="TFrame")
-        header_frame.pack(fill="x", pady=(0, 20))
+        header_frame = ctk.CTkFrame(container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 15))
         
-        title_label = ttk.Label(header_frame, text="Sarvam Timed Captions", font=("Segoe UI", 18, "bold"), foreground="#f8fafc", background="#0f172a")
+        title_label = ctk.CTkLabel(header_frame, text="Sarvam Timed Captions", font=("Segoe UI", 20, "bold"), text_color="#f8fafc")
         title_label.pack(anchor="w")
         
-        subtitle_label = ttk.Label(header_frame, text="Dual-Engine Indic Transcription Studio", font=("Segoe UI", 10), foreground="#94a3b8", background="#0f172a")
+        subtitle_label = ctk.CTkLabel(header_frame, text="Dual-Engine Indic Transcription Studio", font=("Segoe UI", 11), text_color="#94a3b8")
         subtitle_label.pack(anchor="w", pady=(2, 0))
 
         # Main Columns Layout
-        cols_frame = ttk.Frame(container, style="TFrame")
+        cols_frame = ctk.CTkFrame(container, fg_color="transparent")
         cols_frame.pack(fill="both", expand=True)
         
         cols_frame.columnconfigure(0, weight=1, uniform="col")
@@ -261,241 +174,253 @@ class STCGui:
         cols_frame.rowconfigure(0, weight=1)
 
         # Left Column Frame
-        left_col = ttk.Frame(cols_frame, style="TFrame")
+        left_col = ctk.CTkFrame(cols_frame, fg_color="transparent")
         left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         
         # Right Column Frame
-        right_col = ttk.Frame(cols_frame, style="TFrame")
+        right_col = ctk.CTkFrame(cols_frame, fg_color="transparent")
         right_col.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
         # CARD 1: Media Source (Left Column)
-        media_card = ttk.Frame(left_col, style="Card.TFrame", padding=15)
+        media_card = ctk.CTkFrame(left_col, corner_radius=12, border_width=1, border_color="#334155", fg_color="#1e293b")
         media_card.pack(fill="x", pady=(0, 15))
         
-        ttk.Label(media_card, text="MEDIA SOURCE", style="Header.TLabel").pack(anchor="w")
+        lbl = ctk.CTkLabel(media_card, text="MEDIA SOURCE", font=("Segoe UI", 11, "bold"), text_color="#38bdf8")
+        lbl.pack(anchor="w", padx=15, pady=(15, 5))
         
-        f_row = ttk.Frame(media_card, style="Card.TFrame")
-        f_row.pack(fill="x", pady=(10, 0))
-        ttk.Entry(f_row, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=(0, 8))
-        ttk.Button(f_row, text="Browse...", command=self.browse_file, style="Secondary.TButton").pack(side="right")
+        f_row = ctk.CTkFrame(media_card, fg_color="transparent")
+        f_row.pack(fill="x", padx=15, pady=5)
+        self.entry_path = ctk.CTkEntry(f_row, textvariable=self.path_var, placeholder_text="Select media file...", height=32)
+        self.entry_path.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.btn_browse = ctk.CTkButton(f_row, text="Browse...", width=80, height=32, command=self.browse_file, fg_color="#334155", hover_color="#475569")
+        self.btn_browse.pack(side="right")
         
-        self.file_info_var = tk.StringVar(value="No media file selected")
-        ttk.Label(media_card, textvariable=self.file_info_var, font=("Segoe UI", 9, "italic"), foreground="#94a3b8").pack(anchor="w", pady=(8, 0))
+        # Drag & Drop Zone
+        self.drop_zone = ctk.CTkFrame(media_card, height=65, corner_radius=8, border_width=1, border_color="#475569", fg_color="#0f172a")
+        self.drop_zone.pack(fill="x", padx=15, pady=5)
+        self.drop_zone.pack_propagate(False) # Keep fixed height
+        self.drop_label = ctk.CTkLabel(self.drop_zone, text="Drag & Drop Media File Here", font=("Segoe UI", 10, "italic"), text_color="#94a3b8")
+        self.drop_label.pack(expand=True)
+        
+        # Register DND specifically on the drop zone
+        self.drop_zone.drop_target_register(DND_FILES)
+        self.drop_zone.dnd_bind('<<Drop>>', self.on_file_drop)
+        self.drop_label.drop_target_register(DND_FILES)
+        self.drop_label.dnd_bind('<<Drop>>', self.on_file_drop)
+        
+        self.file_info_label = ctk.CTkLabel(media_card, textvariable=self.file_info_var, font=("Segoe UI", 9, "italic"), text_color="#94a3b8")
+        self.file_info_label.pack(anchor="w", padx=15, pady=(5, 15))
 
         # CARD 2: Engine Settings (Left Column)
-        engine_card = ttk.Frame(left_col, style="Card.TFrame", padding=15)
+        engine_card = ctk.CTkFrame(left_col, corner_radius=12, border_width=1, border_color="#334155", fg_color="#1e293b")
         engine_card.pack(fill="both", expand=True)
         
-        ttk.Label(engine_card, text="TRANSCRIPTION ENGINE", style="Header.TLabel").pack(anchor="w")
-        self.engine_combo = ttk.Combobox(engine_card, textvariable=self.engine_var, values=["Sarvam AI (Cloud)", "Whisper (Local)"], state="readonly")
-        self.engine_combo.pack(fill="x", pady=(10, 0))
-        self.engine_combo.bind("<<ComboboxSelected>>", self.toggle_engine_ui)
+        lbl_engine = ctk.CTkLabel(engine_card, text="TRANSCRIPTION ENGINE", font=("Segoe UI", 11, "bold"), text_color="#38bdf8")
+        lbl_engine.pack(anchor="w", padx=15, pady=(15, 5))
         
-        self.dynamic_frame = ttk.Frame(engine_card, style="Card.TFrame")
-        self.dynamic_frame.pack(fill="both", expand=True, pady=(15, 0))
+        self.engine_combo = ctk.CTkOptionMenu(engine_card, variable=self.engine_var, values=["Sarvam AI (Cloud)", "Whisper (Local)"], height=32)
+        self.engine_combo.pack(fill="x", padx=15, pady=5)
+        
+        self.dynamic_frame = ctk.CTkFrame(engine_card, fg_color="transparent")
+        self.dynamic_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
 
         # CARD 3: Language Settings (Right Column)
-        settings_card = ttk.Frame(right_col, style="Card.TFrame", padding=15)
+        settings_card = ctk.CTkFrame(right_col, corner_radius=12, border_width=1, border_color="#334155", fg_color="#1e293b")
         settings_card.pack(fill="x", pady=(0, 15))
         
-        ttk.Label(settings_card, text="TRANSCRIPTION SETTINGS", style="Header.TLabel").pack(anchor="w")
+        lbl_settings = ctk.CTkLabel(settings_card, text="TRANSCRIPTION SETTINGS", font=("Segoe UI", 11, "bold"), text_color="#38bdf8")
+        lbl_settings.pack(anchor="w", padx=15, pady=(15, 5))
         
-        row_lang = ttk.Frame(settings_card, style="Card.TFrame")
-        row_lang.pack(fill="x", pady=(10, 0))
-        ttk.Label(row_lang, text="Language:").pack(side="left", padx=(0, 10))
-        self.lang_combo = ttk.Combobox(row_lang, textvariable=self.lang_var, values=list(LANG_MAP.keys()), state="readonly")
-        self.lang_combo.pack(side="right", fill="x", expand=True)
+        row_lang = ctk.CTkFrame(settings_card, fg_color="transparent")
+        row_lang.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(row_lang, text="Language:").pack(side="left")
+        self.lang_combo = ctk.CTkOptionMenu(row_lang, variable=self.lang_var, values=list(LANG_MAP.keys()), height=32)
+        self.lang_combo.pack(side="right", fill="x", expand=True, padx=(10, 0))
 
         # CARD 4: Control Center (Right Column)
-        control_card = ttk.Frame(right_col, style="Card.TFrame", padding=15)
+        control_card = ctk.CTkFrame(right_col, corner_radius=12, border_width=1, border_color="#334155", fg_color="#1e293b")
         control_card.pack(fill="both", expand=True)
         
-        ttk.Label(control_card, text="CONTROL CENTER", style="Header.TLabel").pack(anchor="w")
+        lbl_control = ctk.CTkLabel(control_card, text="CONTROL CENTER", font=("Segoe UI", 11, "bold"), text_color="#38bdf8")
+        lbl_control.pack(anchor="w", padx=15, pady=(15, 5))
         
-        self.start_btn = ttk.Button(control_card, text="START TASK", command=self.start_task, style="TButton")
-        self.start_btn.pack(fill="x", pady=(20, 10))
+        self.start_btn = ctk.CTkButton(control_card, text="START TASK", font=("Segoe UI", 12, "bold"), fg_color="#6366f1", hover_color="#4f46e5", height=42, command=self.start_task)
+        self.start_btn.pack(fill="x", padx=15, pady=(20, 10))
         
-        self.progress = ttk.Progressbar(control_card, orient="horizontal", mode="determinate", style="Horizontal.TProgressbar")
+        self.progress = ctk.CTkProgressBar(control_card, progress_color="#38bdf8")
         
-        status_row = ttk.Frame(control_card, style="Card.TFrame")
-        status_row.pack(fill="x", pady=(10, 0))
-        ttk.Label(status_row, text="Status:", font=("Segoe UI", 10, "bold")).pack(side="left")
-        self.status_label = ttk.Label(status_row, text="READY", style="Status.TLabel")
-        self.status_label.pack(side="left", padx=5)
+        status_row = ctk.CTkFrame(control_card, fg_color="transparent")
+        status_row.pack(fill="x", padx=15, pady=(10, 15))
+        ctk.CTkLabel(status_row, text="Status:", font=("Segoe UI", 10, "bold")).pack(side="left")
+        self.status_label = ctk.CTkLabel(status_row, text="READY", text_color="#10b981", font=("Segoe UI", 10, "bold"))
+        self.status_label.pack(side="left", padx=10)
 
         # CARD 5: System Logs (Bottom)
-        logs_card = ttk.Frame(container, style="Card.TFrame", padding=15)
+        logs_card = ctk.CTkFrame(container, corner_radius=12, border_width=1, border_color="#334155", fg_color="#1e293b")
         logs_card.pack(fill="both", expand=True, pady=(15, 0))
         
-        ttk.Label(logs_card, text="SYSTEM LOGS & TERMINAL", style="Header.TLabel").pack(anchor="w")
+        lbl_logs = ctk.CTkLabel(logs_card, text="SYSTEM LOGS & TERMINAL", font=("Segoe UI", 11, "bold"), text_color="#38bdf8")
+        lbl_logs.pack(anchor="w", padx=15, pady=(15, 5))
         
-        log_frame = ttk.Frame(logs_card, style="Card.TFrame")
-        log_frame.pack(fill="both", expand=True, pady=(10, 10))
+        self.log_text = ctk.CTkTextbox(logs_card, font=("Consolas", 11), fg_color="#0f172a", text_color="#cbd5e1", border_width=1, border_color="#334155")
+        self.log_text.pack(fill="both", expand=True, padx=15, pady=(5, 10))
         
-        self.log_text = tk.Text(log_frame, height=6, bg="#0f172a", fg="#cbd5e1", font=("Consolas", 9), bd=0, highlightthickness=1, highlightbackground="#334155", highlightcolor="#38bdf8", padx=10, pady=10)
-        self.log_text.pack(side="left", fill="both", expand=True)
-        
-        scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        
-        btn_row = ttk.Frame(logs_card, style="Card.TFrame")
-        btn_row.pack(fill="x")
-        ttk.Button(btn_row, text="Exit Application", command=self.root.quit, style="Secondary.TButton").pack(side="right")
+        btn_row = ctk.CTkFrame(logs_card, fg_color="transparent")
+        btn_row.pack(fill="x", padx=15, pady=(0, 15))
+        self.btn_exit = ctk.CTkButton(btn_row, text="Exit Application", width=120, command=self.root.quit, fg_color="#334155", hover_color="#475569")
+        self.btn_exit.pack(side="right")
 
-    def toggle_engine_ui(self, event=None):
+    def toggle_engine_ui(self):
         for widget in self.dynamic_frame.winfo_children(): widget.destroy()
         engine = self.engine_var.get()
         
-        # Automatic defaults when engine is changed by user interaction
-        if event is not None:
-            if "Sarvam" in engine:
-                self.enable_chunking_var.set(True)
-            else:
-                self.enable_chunking_var.set(False)
-
         if "Sarvam" in engine:
             # 1. API Key Row
-            row_key = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_key.pack(fill="x", pady=2)
-            ttk.Label(row_key, text="Sarvam API Key:").pack(side="left", padx=5)
-            ttk.Entry(row_key, textvariable=self.key_var, show="*").pack(side="left", fill="x", expand=True, padx=5)
+            row_key = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            row_key.pack(fill="x", pady=4)
+            ctk.CTkLabel(row_key, text="API Key:", width=80, anchor="w").pack(side="left")
+            self.entry_key = ctk.CTkEntry(row_key, textvariable=self.key_var, show="*", height=30)
+            self.entry_key.pack(side="left", fill="x", expand=True)
             
             # 2. Plan Row
-            row_plan = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_plan.pack(fill="x", pady=2)
-            ttk.Label(row_plan, text="API Plan Limit:").pack(side="left", padx=5)
-            plan_combo = ttk.Combobox(row_plan, textvariable=self.sarvam_plan_var, 
-                                      values=["Starter (60 RPM)", "Pro (200 RPM)", "Business (1000 RPM)", "Custom Limit"], 
-                                      state="readonly")
-            plan_combo.pack(side="left", fill="x", expand=True, padx=5)
-            plan_combo.bind("<<ComboboxSelected>>", lambda e: self.update_custom_rpm_visibility())
+            row_plan = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            row_plan.pack(fill="x", pady=4)
+            ctk.CTkLabel(row_plan, text="API Plan:", width=80, anchor="w").pack(side="left")
+            self.plan_combo = ctk.CTkOptionMenu(row_plan, variable=self.sarvam_plan_var, 
+                                                values=["Starter (60 RPM)", "Pro (200 RPM)", "Business (1000 RPM)", "Custom Limit"], height=30)
+            self.plan_combo.pack(side="left", fill="x", expand=True)
             
             # 3. Custom RPM Row
-            self.row_custom = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            ttk.Label(self.row_custom, text="Custom RPM:").pack(side="left", padx=5)
-            ttk.Entry(self.row_custom, textvariable=self.sarvam_custom_rpm_var, width=10).pack(side="left", padx=5)
+            self.row_custom = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            ctk.CTkLabel(self.row_custom, text="Custom RPM:", width=80, anchor="w").pack(side="left")
+            self.entry_custom = ctk.CTkEntry(self.row_custom, textvariable=self.sarvam_custom_rpm_var, height=30)
+            self.entry_custom.pack(side="left", fill="x", expand=True)
             
             self.update_custom_rpm_visibility()
             
             # 4. Enable Chunking Checkbox
-            row_chk = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_chk.pack(fill="x", pady=4)
-            ttk.Checkbutton(row_chk, text="Enable Chunking (REST API requires this for >30s)", 
-                            variable=self.enable_chunking_var, 
-                            command=self.update_chunking_controls_visibility).pack(side="left", padx=5)
+            self.chk_chunk = ctk.CTkCheckBox(self.dynamic_frame, text="Enable Chunking (REST requires <30s)", variable=self.enable_chunking_var)
+            self.chk_chunk.pack(anchor="w", pady=8)
             
             # 5. Chunking Settings Frame (contains length and radio buttons)
-            self.chunking_settings_frame = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
+            self.chunking_settings_frame = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
             
-            row_len = ttk.Frame(self.chunking_settings_frame, style="Card.TFrame")
-            row_len.pack(fill="x", pady=2)
-            ttk.Label(row_len, text="Chunk Length (seconds):").pack(side="left", padx=5)
-            ttk.Entry(row_len, textvariable=self.chunk_len_var, width=8).pack(side="left", padx=5)
+            row_len = ctk.CTkFrame(self.chunking_settings_frame, fg_color="transparent")
+            row_len.pack(fill="x", pady=4)
+            ctk.CTkLabel(row_len, text="Length (sec):", width=80, anchor="w").pack(side="left")
+            self.entry_len = ctk.CTkEntry(row_len, textvariable=self.chunk_len_var, width=80, height=30)
+            self.entry_len.pack(side="left")
             
-            row_radio = ttk.Frame(self.chunking_settings_frame, style="Card.TFrame")
-            row_radio.pack(fill="x", pady=2)
-            ttk.Radiobutton(row_radio, text="Smart adjust chunk length to complete in one go (No Waiting)", 
-                            variable=self.chunking_mode_var, value="smart").pack(anchor="w", padx=5, pady=2)
-            ttk.Radiobutton(row_radio, text="Maintain fixed chunk length and wait to respect rate limit", 
-                            variable=self.chunking_mode_var, value="throttle").pack(anchor="w", padx=5, pady=2)
+            self.radio_smart = ctk.CTkRadioButton(self.chunking_settings_frame, text="Smart adjust chunk length (No Waiting)", variable=self.chunking_mode_var, value="smart")
+            self.radio_smart.pack(anchor="w", pady=4)
+            self.radio_throttle = ctk.CTkRadioButton(self.chunking_settings_frame, text="Maintain fixed length and wait/throttle", variable=self.chunking_mode_var, value="throttle")
+            self.radio_throttle.pack(anchor="w", pady=4)
             
             self.update_chunking_controls_visibility()
             
         else:
             # Whisper Engine Settings
-            row_model = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_model.pack(fill="x", pady=2)
-            ttk.Label(row_model, text="Whisper Model:").pack(side="left", padx=5)
-            model_combo = ttk.Combobox(row_model, textvariable=self.model_var, values=WHISPER_MODELS, state="readonly")
-            model_combo.pack(side="left", fill="x", expand=True, padx=5)
-            model_combo.bind("<<ComboboxSelected>>", lambda e: self.update_whisper_status_label())
+            row_model = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            row_model.pack(fill="x", pady=4)
+            ctk.CTkLabel(row_model, text="Model:", width=80, anchor="w").pack(side="left")
+            self.model_combo = ctk.CTkOptionMenu(row_model, variable=self.model_var, values=WHISPER_MODELS, height=30)
+            self.model_combo.pack(side="left", fill="x", expand=True)
             
             # Hardware and Status info
-            row_info = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_info.pack(fill="x", pady=2)
+            self.lbl_hw = ctk.CTkLabel(self.dynamic_frame, text="Hardware: CPU", font=("Segoe UI", 9, "italic"), text_color="#94a3b8", anchor="w")
+            self.lbl_hw.pack(fill="x", pady=2)
+            
+            row_status = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            row_status.pack(fill="x", pady=2)
+            ctk.CTkLabel(row_status, text="Status:", font=("Segoe UI", 10, "bold")).pack(side="left")
+            self.model_status_label = ctk.CTkLabel(row_status, text="Checking...", text_color="#38bdf8", font=("Segoe UI", 10, "bold"))
+            self.model_status_label.pack(side="left", padx=5)
             
             hw = detect_hardware_acceleration()
             hw_text = f"Hardware: {hw['recommended'].upper()}"
             if hw['cuda_available'] and hw['devices']:
                 hw_text += f" ({hw['devices'][0]})"
-            
-            ttk.Label(row_info, text=hw_text, font=("Segoe UI", 9, "italic")).pack(side="left", padx=5)
-            
-            self.model_status_label = ttk.Label(row_info, text="Status: Checking...", font=("Segoe UI", 9, "bold"))
-            self.model_status_label.pack(side="right", padx=10)
+            self.lbl_hw.configure(text=hw_text)
             self.update_whisper_status_label()
             
             # Check & Download button
-            row_btn = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_btn.pack(fill="x", pady=2)
-            self.download_btn = ttk.Button(row_btn, text="Check & Download Model", command=self.check_download_model)
-            self.download_btn.pack(fill="x", padx=5, pady=2)
+            self.download_btn = ctk.CTkButton(self.dynamic_frame, text="Check & Download Model", command=self.check_download_model, fg_color="#334155", hover_color="#475569", height=32)
+            self.download_btn.pack(fill="x", pady=8)
             
             # Enable Chunking Checkbox
-            row_chk = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_chk.pack(fill="x", pady=4)
-            ttk.Checkbutton(row_chk, text="Enable Chunking (Not recommended for Whisper)", 
-                            variable=self.enable_chunking_var, 
-                            command=self.update_chunking_controls_visibility).pack(side="left", padx=5)
+            self.chk_chunk = ctk.CTkCheckBox(self.dynamic_frame, text="Enable Chunking (Not recommended)", variable=self.enable_chunking_var)
+            self.chk_chunk.pack(anchor="w", pady=8)
             
             # Chunking Settings Frame
-            self.chunking_settings_frame = ttk.Frame(self.dynamic_frame, style="Card.TFrame")
-            row_len = ttk.Frame(self.chunking_settings_frame, style="Card.TFrame")
-            row_len.pack(fill="x", pady=2)
-            ttk.Label(row_len, text="Chunk Length (seconds):").pack(side="left", padx=5)
-            ttk.Entry(row_len, textvariable=self.chunk_len_var, width=8).pack(side="left", padx=5)
+            self.chunking_settings_frame = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            row_len = ctk.CTkFrame(self.chunking_settings_frame, fg_color="transparent")
+            row_len.pack(fill="x", pady=4)
+            ctk.CTkLabel(row_len, text="Length (sec):", width=80, anchor="w").pack(side="left")
+            self.entry_len = ctk.CTkEntry(row_len, textvariable=self.chunk_len_var, width=80, height=30)
+            self.entry_len.pack(side="left")
             
             self.update_chunking_controls_visibility()
 
-    def update_custom_rpm_visibility(self):
-        if self.sarvam_plan_var.get() == "Custom Limit":
-            self.row_custom.pack(fill="x", pady=2)
+    def handle_engine_change(self):
+        engine = self.engine_var.get()
+        if "Sarvam" in engine:
+            self.enable_chunking_var.set(True)
         else:
-            self.row_custom.pack_forget()
+            self.enable_chunking_var.set(False)
+        self.toggle_engine_ui()
+
+    def update_custom_rpm_visibility(self):
+        try:
+            if self.sarvam_plan_var.get() == "Custom Limit":
+                self.row_custom.pack(fill="x", pady=2)
+            else:
+                self.row_custom.pack_forget()
+        except: pass
 
     def update_chunking_controls_visibility(self):
-        if self.enable_chunking_var.get():
-            self.chunking_settings_frame.pack(fill="x", pady=2)
-        else:
-            self.chunking_settings_frame.pack_forget()
+        try:
+            if self.enable_chunking_var.get():
+                self.chunking_settings_frame.pack(fill="x", pady=2)
+            else:
+                self.chunking_settings_frame.pack_forget()
+        except: pass
 
     def update_whisper_status_label(self):
-        model_name = self.model_var.get()
         try:
+            model_name = self.model_var.get()
             cached = check_whisper_model_cached(model_name)
             if cached:
-                self.model_status_label.configure(text="Status: Cached (Ready)", foreground="#10b981")
+                self.model_status_label.configure(text="Cached (Ready)", text_color="#10b981")
             else:
-                self.model_status_label.configure(text="Status: Needs Download", foreground="#ef4444")
+                self.model_status_label.configure(text="Needs Download", text_color="#ef4444")
         except:
-            self.model_status_label.configure(text="Status: Unknown", foreground="#cbd5e1")
+            try: self.model_status_label.configure(text="Unknown", text_color="#cbd5e1")
+            except: pass
 
     def check_download_model(self):
-        self.download_btn.state(["disabled"])
-        self.model_status_label.configure(text="Status: Checking...", foreground="#38bdf8")
+        self.download_btn.configure(state="disabled")
+        self.model_status_label.configure(text="Checking...", text_color="#38bdf8")
         threading.Thread(target=self._check_download_worker, daemon=True).start()
         
     def _check_download_worker(self):
         model_name = self.model_var.get()
         try:
             self.write_log(f"Checking/Downloading Whisper '{model_name}' model...")
-            self.root.after(0, lambda: self.model_status_label.configure(text="Status: Downloading...", foreground="#38bdf8"))
+            self.after(0, lambda: self.model_status_label.configure(text="Downloading...", text_color="#38bdf8"))
             
             import whisper
             hw = detect_hardware_acceleration()
             device = hw["recommended"]
             
-            # This downloads the model to cache if not already present
             whisper.load_model(model_name, device=device)
             
             self.write_log(f"Whisper '{model_name}' model is loaded and ready on {device.upper()}.")
-            self.root.after(0, lambda: self.model_status_label.configure(text="Status: Cached (Ready)", foreground="#10b981"))
+            self.after(0, lambda: self.model_status_label.configure(text="Cached (Ready)", text_color="#10b981"))
         except Exception as e:
             self.write_log(f"Error checking/downloading model: {str(e)}")
-            self.root.after(0, lambda: self.model_status_label.configure(text="Status: Failed to load", foreground="#ef4444"))
+            self.after(0, lambda: self.model_status_label.configure(text="Failed to load", text_color="#ef4444"))
         finally:
-            self.root.after(0, lambda: self.download_btn.state(["!disabled"]))
+            self.after(0, lambda: self.download_btn.configure(state="normal"))
 
     def load_settings(self):
         try:
@@ -537,10 +462,11 @@ class STCGui:
     def process_logs(self):
         try:
             while True:
-                self.log_text.insert(tk.END, f"> {self.log_queue.get_nowait()}\n")
-                self.log_text.see(tk.END)
+                msg = self.log_queue.get_nowait()
+                self.log_text.insert("end", f"> {msg}\n")
+                self.log_text.see("end")
         except queue.Empty: pass
-        self.root.after(100, self.process_logs)
+        self.after(100, self.process_logs)
 
     def browse_file(self):
         p = filedialog.askopenfilename(filetypes=[("Media", "*.mp4 *.mkv *.mov *.avi *.mp3 *.wav *.m4a *.flac"), ("All", "*.*")])
@@ -550,12 +476,29 @@ class STCGui:
             self.file_info_var.set(f"{os.path.basename(p)} ({size_mb:.2f} MB)")
             self.write_log(f"Loaded: {os.path.basename(p)}")
 
+    def on_file_drop(self, event):
+        data = event.data.strip()
+        # Clean Tcl curly braces or double quotes from path
+        if data.startswith('{') and data.endswith('}'):
+            data = data[1:-1]
+        elif data.startswith('"') and data.endswith('"'):
+            data = data[1:-1]
+            
+        if os.path.isfile(data):
+            self.path_var.set(data)
+            size_mb = os.path.getsize(data) / (1024 * 1024)
+            self.file_info_var.set(f"{os.path.basename(data)} ({size_mb:.2f} MB)")
+            self.write_log(f"Dropped: {os.path.basename(data)}")
+        else:
+            messagebox.showerror("Error", "Dropped item is not a valid file.")
+
     def start_task(self):
         self.save_settings()
         f = self.path_var.get().strip()
         if not f or not os.path.isfile(f): messagebox.showerror("Error", "Select a valid file."); return
-        self.start_btn.state(["disabled"])
+        self.start_btn.configure(state="disabled")
         self.progress.pack(fill="x", pady=(10, 0))
+        self.progress.set(0.0)
         threading.Thread(target=self.worker, args=(f,), daemon=True).start()
 
     def ask_fallback(self, event, result_dict):
@@ -598,13 +541,10 @@ class STCGui:
             # Setup chunk length based on mode
             if enable_chunking:
                 if self.chunking_mode_var.get() == "smart" and "Sarvam" in engine:
-                    # Smart calculation: total_duration / rpm_limit
                     smart_len = total_duration_sec / rpm_limit
-                    # Clamp between 5s and 30s to respect REST API constraints
                     chunk_len_sec = min(30.0, max(5.0, smart_len))
                     self.write_log(f"Smart chunk length calculated: {chunk_len_sec:.2f}s (based on {total_duration_sec:.1f}s file duration and {rpm_limit} RPM)")
                 else:
-                    # For Sarvam, clamp user value to max 30s because of API constraints
                     if "Sarvam" in engine:
                         chunk_len_sec = min(30.0, max(1.0, chunk_len_sec))
                         
@@ -630,7 +570,7 @@ class STCGui:
             
             for idx, chunk in enumerate(chunks):
                 chunk_start_sec = (idx * chunk_len_sec) if enable_chunking else 0.0
-                self.root.after(0, lambda p=((idx+1)/total_chunks)*100: self.progress.configure(value=p))
+                self.after(0, lambda p=((idx+1)/total_chunks): self.progress.set(p))
                 
                 c_file = os.path.join(TEMP_DIR, f"temp_c_{idx}.wav")
                 chunk.export(c_file, format="wav")
@@ -677,14 +617,13 @@ class STCGui:
                             self.write_log("API rate limit or quota exceeded!")
                             event = threading.Event()
                             result_dict = {"fallback": False}
-                            self.root.after(0, lambda: self.ask_fallback(event, result_dict))
+                            self.after(0, lambda: self.ask_fallback(event, result_dict))
                             event.wait() # Block worker until choice is made
                             
                             if result_dict["fallback"]:
                                 self.write_log("User selected fallback to Whisper (Local). Switching...")
                                 engine = "Whisper (Local)"
-                                self.root.after(0, lambda: self.engine_var.set("Whisper (Local)"))
-                                self.root.after(0, self.toggle_engine_ui)
+                                self.after(0, lambda: self.engine_var.set("Whisper (Local)"))
                                 
                                 if whisper_model is None:
                                     import whisper
@@ -720,17 +659,18 @@ class STCGui:
             out = os.path.splitext(f)[0] + ".srt"
             subs.save(out, encoding="utf-8")
             self.write_log(f"SUCCESS: {os.path.basename(out)}")
-            self.root.after(0, lambda: self.status_label.configure(text="COMPLETED", foreground="#10b981"))
+            self.after(0, lambda: self.status_label.configure(text="COMPLETED", text_color="#10b981"))
         except Exception as e:
             self.write_log(f"FATAL: {str(e)}")
-            self.root.after(0, lambda: self.status_label.configure(text="FAILED", foreground="#ef4444"))
+            self.after(0, lambda: self.status_label.configure(text="FAILED", text_color="#ef4444"))
         finally:
             if os.path.exists(temp_audio): os.remove(temp_audio)
-            self.root.after(0, self.progress.pack_forget)
-            self.root.after(0, lambda: self.start_btn.state(["!disabled"]))
+            self.after(0, self.progress.pack_forget)
+            self.after(0, lambda: self.start_btn.configure(state="normal"))
 
 def main():
-    root = tk.Tk(); app = STCGui(root); root.mainloop()
+    app = STCGui()
+    app.mainloop()
 
 if __name__ == "__main__":
     main()
