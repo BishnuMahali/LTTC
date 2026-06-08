@@ -267,7 +267,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
         
         btn_row = ctk.CTkFrame(logs_card, fg_color="transparent")
         btn_row.pack(fill="x", padx=15, pady=(0, 15))
-        self.btn_exit = ctk.CTkButton(btn_row, text="Exit Application", width=120, command=self.root.quit, fg_color="#334155", hover_color="#475569")
+        self.btn_exit = ctk.CTkButton(btn_row, text="Exit Application", width=120, command=self.quit, fg_color="#334155", hover_color="#475569")
         self.btn_exit.pack(side="right")
 
     def toggle_engine_ui(self):
