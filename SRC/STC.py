@@ -97,8 +97,8 @@ class STCGui:
     def __init__(self, root):
         self.root = root
         self.root.title("Sarvam Timed Captions - Dashboard")
-        self.root.geometry("750x780")
-        self.root.minsize(650, 650)
+        self.root.geometry("780x780")
+        self.root.minsize(750, 680)
         
         self.log_queue = queue.Queue()
         
@@ -135,66 +135,213 @@ class STCGui:
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use('clam')
-        bg_color, card_color, accent_color, text_color = "#0f172a", "#1e293b", "#38bdf8", "#f8fafc"
+        bg_color, card_color, accent_color, text_color = "#0f172a", "#1e293b", "#6366f1", "#f8fafc"
         self.root.configure(bg=bg_color)
+        
         style.configure("TFrame", background=bg_color)
-        style.configure("Card.TFrame", background=card_color, borderwidth=1, relief="solid")
+        style.configure("Card.TFrame", background=card_color, borderwidth=1, relief="solid", bordercolor="#334155")
         style.configure("TLabel", background=card_color, foreground=text_color, font=("Segoe UI", 10))
-        style.configure("Header.TLabel", background=card_color, foreground=accent_color, font=("Segoe UI", 12, "bold"))
-        style.configure("Status.TLabel", background=bg_color, foreground="#10b981", font=("Segoe UI", 10, "bold"))
-        style.configure("Action.TButton", font=("Segoe UI", 10, "bold"), padding=5)
-        style.configure("Horizontal.TProgressbar", background=accent_color, troughcolor="#020617")
-        style.configure("TCheckbutton", background=card_color, foreground=text_color, font=("Segoe UI", 10))
-        style.configure("TRadiobutton", background=card_color, foreground=text_color, font=("Segoe UI", 10))
+        style.configure("Header.TLabel", background=card_color, foreground="#38bdf8", font=("Segoe UI", 11, "bold"))
+        style.configure("Status.TLabel", background=card_color, foreground="#10b981", font=("Segoe UI", 10, "bold"))
+        
+        # Primary Action Button
+        style.configure("TButton", 
+                        background=accent_color, 
+                        foreground="#ffffff", 
+                        bordercolor=accent_color, 
+                        lightcolor=accent_color, 
+                        darkcolor=accent_color, 
+                        font=("Segoe UI", 10, "bold"), 
+                        padding=(15, 6),
+                        focuscolor="none")
+        style.map("TButton", 
+                  background=[("active", "#4f46e5"), ("disabled", "#334155")],
+                  bordercolor=[("active", "#4f46e5"), ("disabled", "#334155")],
+                  lightcolor=[("active", "#4f46e5"), ("disabled", "#334155")],
+                  darkcolor=[("active", "#4f46e5"), ("disabled", "#334155")],
+                  foreground=[("disabled", "#94a3b8")])
+                  
+        # Secondary Action Button
+        style.configure("Secondary.TButton", 
+                        background="#334155", 
+                        foreground=text_color, 
+                        bordercolor="#334155", 
+                        lightcolor="#334155", 
+                        darkcolor="#334155", 
+                        font=("Segoe UI", 10), 
+                        padding=(10, 5),
+                        focuscolor="none")
+        style.map("Secondary.TButton", 
+                  background=[("active", "#475569"), ("disabled", "#1e293b")],
+                  bordercolor=[("active", "#475569"), ("disabled", "#1e293b")],
+                  lightcolor=[("active", "#475569"), ("disabled", "#1e293b")],
+                  darkcolor=[("active", "#475569"), ("disabled", "#1e293b")],
+                  foreground=[("disabled", "#64748b")])
+
+        # Modern Progress Bar
+        style.configure("Horizontal.TProgressbar", background="#38bdf8", troughcolor="#0f172a", bordercolor="#334155")
+        
+        # Checkbuttons and Radiobuttons
+        style.configure("TCheckbutton", 
+                        background=card_color, 
+                        foreground=text_color, 
+                        font=("Segoe UI", 10), 
+                        padding=4,
+                        indicatorcolor="#0f172a",
+                        indicatorbackground=card_color)
+        style.map("TCheckbutton", 
+                  background=[("active", card_color)],
+                  foreground=[("active", text_color)],
+                  indicatorbackground=[("selected", "#38bdf8"), ("!selected", "#0f172a")],
+                  indicatorcolor=[("selected", "#0f172a")])
+
+        style.configure("TRadiobutton", 
+                        background=card_color, 
+                        foreground=text_color, 
+                        font=("Segoe UI", 10), 
+                        padding=4,
+                        indicatorcolor="#0f172a",
+                        indicatorbackground=card_color)
+        style.map("TRadiobutton", 
+                  background=[("active", card_color)],
+                  foreground=[("active", text_color)],
+                  indicatorbackground=[("selected", "#38bdf8"), ("!selected", "#0f172a")],
+                  indicatorcolor=[("selected", "#0f172a")])
+
+        # Modern Text Entries & Comboboxes with interactive focus borders
+        style.configure("TEntry", 
+                        fieldbackground="#0f172a", 
+                        foreground=text_color, 
+                        bordercolor="#334155", 
+                        lightcolor="#334155", 
+                        darkcolor="#334155", 
+                        insertcolor=text_color,
+                        padding=6)
+        style.map("TEntry", 
+                  bordercolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
+                  lightcolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
+                  darkcolor=[("focus", "#38bdf8"), ("!focus", "#334155")])
+
+        style.configure("TCombobox", 
+                        fieldbackground="#0f172a", 
+                        foreground=text_color, 
+                        bordercolor="#334155", 
+                        lightcolor="#334155", 
+                        darkcolor="#334155", 
+                        arrowcolor="#94a3b8",
+                        padding=6)
+        style.map("TCombobox", 
+                  fieldbackground=[("readonly", "#0f172a")],
+                  foreground=[("readonly", text_color)],
+                  bordercolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
+                  lightcolor=[("focus", "#38bdf8"), ("!focus", "#334155")],
+                  darkcolor=[("focus", "#38bdf8"), ("!focus", "#334155")])
 
     def build_ui(self):
+        # Main Dashboard Container
         container = ttk.Frame(self.root, padding=20)
         container.pack(fill="both", expand=True)
 
-        # 1. Engine Selection
-        engine_card = ttk.Frame(container, style="Card.TFrame", padding=15)
-        engine_card.pack(fill="x", pady=(0, 10))
-        ttk.Label(engine_card, text="1. SELECT TRANSCRIPTION ENGINE", style="Header.TLabel").pack(anchor="w")
+        # Header section (Title & Subtitle)
+        header_frame = ttk.Frame(container, style="TFrame")
+        header_frame.pack(fill="x", pady=(0, 20))
+        
+        title_label = ttk.Label(header_frame, text="Sarvam Timed Captions", font=("Segoe UI", 18, "bold"), foreground="#f8fafc", background="#0f172a")
+        title_label.pack(anchor="w")
+        
+        subtitle_label = ttk.Label(header_frame, text="Dual-Engine Indic Transcription Studio", font=("Segoe UI", 10), foreground="#94a3b8", background="#0f172a")
+        subtitle_label.pack(anchor="w", pady=(2, 0))
+
+        # Main Columns Layout
+        cols_frame = ttk.Frame(container, style="TFrame")
+        cols_frame.pack(fill="both", expand=True)
+        
+        cols_frame.columnconfigure(0, weight=1, uniform="col")
+        cols_frame.columnconfigure(1, weight=1, uniform="col")
+        cols_frame.rowconfigure(0, weight=1)
+
+        # Left Column Frame
+        left_col = ttk.Frame(cols_frame, style="TFrame")
+        left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # Right Column Frame
+        right_col = ttk.Frame(cols_frame, style="TFrame")
+        right_col.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
+        # CARD 1: Media Source (Left Column)
+        media_card = ttk.Frame(left_col, style="Card.TFrame", padding=15)
+        media_card.pack(fill="x", pady=(0, 15))
+        
+        ttk.Label(media_card, text="MEDIA SOURCE", style="Header.TLabel").pack(anchor="w")
+        
+        f_row = ttk.Frame(media_card, style="Card.TFrame")
+        f_row.pack(fill="x", pady=(10, 0))
+        ttk.Entry(f_row, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ttk.Button(f_row, text="Browse...", command=self.browse_file, style="Secondary.TButton").pack(side="right")
+        
+        self.file_info_var = tk.StringVar(value="No media file selected")
+        ttk.Label(media_card, textvariable=self.file_info_var, font=("Segoe UI", 9, "italic"), foreground="#94a3b8").pack(anchor="w", pady=(8, 0))
+
+        # CARD 2: Engine Settings (Left Column)
+        engine_card = ttk.Frame(left_col, style="Card.TFrame", padding=15)
+        engine_card.pack(fill="both", expand=True)
+        
+        ttk.Label(engine_card, text="TRANSCRIPTION ENGINE", style="Header.TLabel").pack(anchor="w")
         self.engine_combo = ttk.Combobox(engine_card, textvariable=self.engine_var, values=["Sarvam AI (Cloud)", "Whisper (Local)"], state="readonly")
         self.engine_combo.pack(fill="x", pady=(10, 0))
         self.engine_combo.bind("<<ComboboxSelected>>", self.toggle_engine_ui)
-
-        # 2. Media Selection
-        media_card = ttk.Frame(container, style="Card.TFrame", padding=15)
-        media_card.pack(fill="x", pady=(0, 10))
-        ttk.Label(media_card, text="2. SELECT MEDIA FILE", style="Header.TLabel").pack(anchor="w")
-        f_row = ttk.Frame(media_card, style="Card.TFrame")
-        f_row.pack(fill="x", pady=(10, 0))
-        ttk.Entry(f_row, textvariable=self.path_var).pack(side="left", fill="x", expand=True, padx=(0, 10))
-        ttk.Button(f_row, text="Browse...", command=self.browse_file, style="Action.TButton").pack(side="right")
-
-        # 3. Settings Card (Dynamic Content)
-        self.settings_card = ttk.Frame(container, style="Card.TFrame", padding=15)
-        self.settings_card.pack(fill="x", pady=(0, 10))
-        ttk.Label(self.settings_card, text="3. ENGINE SETTINGS", style="Header.TLabel").pack(anchor="w")
         
-        self.dynamic_frame = ttk.Frame(self.settings_card, style="Card.TFrame")
-        self.dynamic_frame.pack(fill="x", pady=(10, 0))
-        
-        # 4. Common Settings
-        common_card = ttk.Frame(container, style="Card.TFrame", padding=15)
-        common_card.pack(fill="x", pady=(0, 10))
-        ttk.Label(common_card, text="4. LANGUAGE", style="Header.TLabel").pack(anchor="w")
-        self.lang_combo = ttk.Combobox(common_card, textvariable=self.lang_var, values=list(LANG_MAP.keys()), state="readonly")
-        self.lang_combo.pack(fill="x", pady=(10, 0))
+        self.dynamic_frame = ttk.Frame(engine_card, style="Card.TFrame")
+        self.dynamic_frame.pack(fill="both", expand=True, pady=(15, 0))
 
-        # 5. Actions
-        btn_row = ttk.Frame(container)
-        btn_row.pack(fill="x", pady=10)
-        self.start_btn = ttk.Button(btn_row, text="START TASK", command=self.start_task, style="Action.TButton")
-        self.start_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ttk.Button(btn_row, text="Exit", command=self.root.quit, style="Action.TButton").pack(side="right")
+        # CARD 3: Language Settings (Right Column)
+        settings_card = ttk.Frame(right_col, style="Card.TFrame", padding=15)
+        settings_card.pack(fill="x", pady=(0, 15))
         
-        self.progress = ttk.Progressbar(container, orient="horizontal", mode="determinate", style="Horizontal.TProgressbar")
-        self.log_text = tk.Text(container, height=8, bg="#020617", fg="#cbd5e1", font=("Consolas", 9), padx=10, pady=10)
-        self.log_text.pack(fill="both", expand=True, pady=10)
-        self.status_label = ttk.Label(container, text="READY", style="Status.TLabel")
-        self.status_label.pack()
+        ttk.Label(settings_card, text="TRANSCRIPTION SETTINGS", style="Header.TLabel").pack(anchor="w")
+        
+        row_lang = ttk.Frame(settings_card, style="Card.TFrame")
+        row_lang.pack(fill="x", pady=(10, 0))
+        ttk.Label(row_lang, text="Language:").pack(side="left", padx=(0, 10))
+        self.lang_combo = ttk.Combobox(row_lang, textvariable=self.lang_var, values=list(LANG_MAP.keys()), state="readonly")
+        self.lang_combo.pack(side="right", fill="x", expand=True)
+
+        # CARD 4: Control Center (Right Column)
+        control_card = ttk.Frame(right_col, style="Card.TFrame", padding=15)
+        control_card.pack(fill="both", expand=True)
+        
+        ttk.Label(control_card, text="CONTROL CENTER", style="Header.TLabel").pack(anchor="w")
+        
+        self.start_btn = ttk.Button(control_card, text="START TASK", command=self.start_task, style="TButton")
+        self.start_btn.pack(fill="x", pady=(20, 10))
+        
+        self.progress = ttk.Progressbar(control_card, orient="horizontal", mode="determinate", style="Horizontal.TProgressbar")
+        
+        status_row = ttk.Frame(control_card, style="Card.TFrame")
+        status_row.pack(fill="x", pady=(10, 0))
+        ttk.Label(status_row, text="Status:", font=("Segoe UI", 10, "bold")).pack(side="left")
+        self.status_label = ttk.Label(status_row, text="READY", style="Status.TLabel")
+        self.status_label.pack(side="left", padx=5)
+
+        # CARD 5: System Logs (Bottom)
+        logs_card = ttk.Frame(container, style="Card.TFrame", padding=15)
+        logs_card.pack(fill="both", expand=True, pady=(15, 0))
+        
+        ttk.Label(logs_card, text="SYSTEM LOGS & TERMINAL", style="Header.TLabel").pack(anchor="w")
+        
+        log_frame = ttk.Frame(logs_card, style="Card.TFrame")
+        log_frame.pack(fill="both", expand=True, pady=(10, 10))
+        
+        self.log_text = tk.Text(log_frame, height=6, bg="#0f172a", fg="#cbd5e1", font=("Consolas", 9), bd=0, highlightthickness=1, highlightbackground="#334155", highlightcolor="#38bdf8", padx=10, pady=10)
+        self.log_text.pack(side="left", fill="both", expand=True)
+        
+        scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        
+        btn_row = ttk.Frame(logs_card, style="Card.TFrame")
+        btn_row.pack(fill="x")
+        ttk.Button(btn_row, text="Exit Application", command=self.root.quit, style="Secondary.TButton").pack(side="right")
 
     def toggle_engine_ui(self, event=None):
         for widget in self.dynamic_frame.winfo_children(): widget.destroy()
@@ -397,14 +544,18 @@ class STCGui:
 
     def browse_file(self):
         p = filedialog.askopenfilename(filetypes=[("Media", "*.mp4 *.mkv *.mov *.avi *.mp3 *.wav *.m4a *.flac"), ("All", "*.*")])
-        if p: self.path_var.set(p); self.write_log(f"Loaded: {os.path.basename(p)}")
+        if p:
+            self.path_var.set(p)
+            size_mb = os.path.getsize(p) / (1024 * 1024)
+            self.file_info_var.set(f"{os.path.basename(p)} ({size_mb:.2f} MB)")
+            self.write_log(f"Loaded: {os.path.basename(p)}")
 
     def start_task(self):
         self.save_settings()
         f = self.path_var.get().strip()
         if not f or not os.path.isfile(f): messagebox.showerror("Error", "Select a valid file."); return
         self.start_btn.state(["disabled"])
-        self.progress.pack(fill="x", pady=5, before=self.log_text)
+        self.progress.pack(fill="x", pady=(10, 0))
         threading.Thread(target=self.worker, args=(f,), daemon=True).start()
 
     def ask_fallback(self, event, result_dict):
