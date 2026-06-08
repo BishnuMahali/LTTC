@@ -21,6 +21,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from pydub import AudioSegment
+from pydub.silence import detect_silence
 import pysrt
 
 # Core Config
@@ -99,6 +100,78 @@ def check_whisper_model_cached(model_name):
         pass
     return False
 
+def split_audio_fixed(audio, target_len_ms):
+    total_len = len(audio)
+    chunks = []
+    for i in range(0, total_len, target_len_ms):
+        p_start = i
+        p_end = min(total_len, i + target_len_ms)
+        chunks.append({
+            "audio": audio[p_start:p_end],
+            "start_sec": p_start / 1000.0,
+            "duration_sec": (p_end - p_start) / 1000.0
+        })
+    return chunks
+
+def split_audio_smart(audio, target_len_ms, min_silence_len=200, silence_thresh=-40):
+    total_len = len(audio)
+    cut_points = [0]
+    current_start = 0
+    
+    # We search for silence in a window around the target cut point
+    # Search window: from target - 1500ms to target + 1500ms
+    window_half = 1500
+    
+    while current_start + target_len_ms < total_len:
+        target_cut = current_start + target_len_ms
+        
+        # Ensure we don't make a segment shorter than 1000ms
+        search_start = max(current_start + 1000, target_cut - window_half)
+        search_end = min(total_len - 1000, target_cut + window_half)
+        
+        cut_point = target_cut
+        
+        if search_start < search_end:
+            search_segment = audio[search_start:search_end]
+            silences = detect_silence(search_segment, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
+            
+            if not silences:
+                # Try higher threshold (softer background noise / louder parts)
+                silences = detect_silence(search_segment, min_silence_len=min_silence_len, silence_thresh=silence_thresh + 8)
+                
+            if silences:
+                # Find the silence interval closest to the target cut relative point
+                target_rel = target_cut - search_start
+                closest_mid = None
+                min_diff = float('inf')
+                
+                for start_rel, end_rel in silences:
+                    mid_rel = (start_rel + end_rel) / 2
+                    diff = abs(mid_rel - target_rel)
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_mid = search_start + mid_rel
+                
+                if closest_mid is not None:
+                    cut_point = int(closest_mid)
+                    
+        cut_points.append(cut_point)
+        current_start = cut_point
+        
+    cut_points.append(total_len)
+    
+    # Generate chunk dicts
+    chunks = []
+    for i in range(len(cut_points) - 1):
+        p_start = cut_points[i]
+        p_end = cut_points[i+1]
+        chunks.append({
+            "audio": audio[p_start:p_end],
+            "start_sec": p_start / 1000.0,
+            "duration_sec": (p_end - p_start) / 1000.0
+        })
+    return chunks
+
 class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
         super().__init__()
@@ -123,6 +196,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
         self.chunk_len_var = tk.StringVar(value="5")
         self.chunking_mode_var = tk.StringVar(value="throttle")
         self.enable_chunking_var = tk.BooleanVar(value=True)
+        self.smart_silence_var = tk.BooleanVar(value=True)
         self.file_info_var = tk.StringVar(value="No media file selected")
 
         self.build_ui()
@@ -138,10 +212,11 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
         self.enable_chunking_var.trace_add("write", lambda *args: self.update_chunking_controls_visibility())
         self.sarvam_plan_var.trace_add("write", lambda *args: self.update_custom_rpm_visibility())
         self.model_var.trace_add("write", lambda *args: self.update_whisper_status_label())
+        self.smart_silence_var.trace_add("write", lambda *args: self.save_settings())
         
         for var in [self.engine_var, self.lang_var, self.model_var, self.key_var,
                     self.sarvam_plan_var, self.sarvam_custom_rpm_var, self.chunk_len_var,
-                    self.chunking_mode_var, self.enable_chunking_var]:
+                    self.chunking_mode_var, self.enable_chunking_var, self.smart_silence_var]:
             var.trace_add("write", lambda *args: self.save_settings())
 
         # Register Drag and Drop for the whole window
@@ -302,7 +377,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             self.chk_chunk = ctk.CTkCheckBox(self.dynamic_frame, text="Enable Chunking (REST requires <30s)", variable=self.enable_chunking_var)
             self.chk_chunk.pack(anchor="w", pady=8)
             
-            # 5. Chunking Settings Frame (contains length and radio buttons)
+            # 5. Chunking Settings Frame (contains length, silence chk, and radio buttons)
             self.chunking_settings_frame = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
             
             row_len = ctk.CTkFrame(self.chunking_settings_frame, fg_color="transparent")
@@ -310,6 +385,9 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             ctk.CTkLabel(row_len, text="Length (sec):", width=80, anchor="w").pack(side="left")
             self.entry_len = ctk.CTkEntry(row_len, textvariable=self.chunk_len_var, width=80, height=30)
             self.entry_len.pack(side="left")
+            
+            self.chk_silence = ctk.CTkCheckBox(self.chunking_settings_frame, text="Align cuts with nearest silence (recommended)", variable=self.smart_silence_var)
+            self.chk_silence.pack(anchor="w", pady=6)
             
             self.radio_smart = ctk.CTkRadioButton(self.chunking_settings_frame, text="Smart adjust chunk length (No Waiting)", variable=self.chunking_mode_var, value="smart")
             self.radio_smart.pack(anchor="w", pady=4)
@@ -353,11 +431,15 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             
             # Chunking Settings Frame
             self.chunking_settings_frame = ctk.CTkFrame(self.dynamic_frame, fg_color="transparent")
+            
             row_len = ctk.CTkFrame(self.chunking_settings_frame, fg_color="transparent")
             row_len.pack(fill="x", pady=4)
             ctk.CTkLabel(row_len, text="Length (sec):", width=80, anchor="w").pack(side="left")
             self.entry_len = ctk.CTkEntry(row_len, textvariable=self.chunk_len_var, width=80, height=30)
             self.entry_len.pack(side="left")
+            
+            self.chk_silence = ctk.CTkCheckBox(self.chunking_settings_frame, text="Align cuts with nearest silence (recommended)", variable=self.smart_silence_var)
+            self.chk_silence.pack(anchor="w", pady=6)
             
             self.update_chunking_controls_visibility()
 
@@ -439,6 +521,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                     self.chunk_len_var.set(cfg.get("chunk_len_sec", "5"))
                     self.chunking_mode_var.set(cfg.get("chunking_mode", "throttle"))
                     self.enable_chunking_var.set(cfg.get("enable_chunking", True))
+                    self.smart_silence_var.set(cfg.get("smart_silence", True))
         except: pass
 
     def save_settings(self):
@@ -451,7 +534,8 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                 "sarvam_custom_rpm": self.sarvam_custom_rpm_var.get(),
                 "chunk_len_sec": self.chunk_len_var.get(),
                 "chunking_mode": self.chunking_mode_var.get(),
-                "enable_chunking": self.enable_chunking_var.get()
+                "enable_chunking": self.enable_chunking_var.get(),
+                "smart_silence": self.smart_silence_var.get()
             }
             key = self.key_var.get().strip()
             if key: cfg["key_enc"] = base64.b64encode(key.encode()).decode()
@@ -497,7 +581,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
         f = self.path_var.get().strip()
         if not f or not os.path.isfile(f): messagebox.showerror("Error", "Select a valid file."); return
         self.start_btn.configure(state="disabled")
-        self.progress.pack(fill="x", pady=(10, 0))
+        self.progress.pack(fill="x", padx=15, pady=(10, 0))
         self.progress.set(0.0)
         threading.Thread(target=self.worker, args=(f,), daemon=True).start()
 
@@ -538,21 +622,30 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             try: chunk_len_sec = float(self.chunk_len_var.get().strip())
             except: chunk_len_sec = 5.0
             
-            # Setup chunk length based on mode
+            # Setup chunk length and slicing method
             if enable_chunking:
-                if self.chunking_mode_var.get() == "smart" and "Sarvam" in engine:
-                    smart_len = total_duration_sec / rpm_limit
-                    chunk_len_sec = min(30.0, max(5.0, smart_len))
-                    self.write_log(f"Smart chunk length calculated: {chunk_len_sec:.2f}s (based on {total_duration_sec:.1f}s file duration and {rpm_limit} RPM)")
-                else:
-                    if "Sarvam" in engine:
-                        chunk_len_sec = min(30.0, max(1.0, chunk_len_sec))
-                        
                 chunk_len_ms = int(chunk_len_sec * 1000)
-                chunks = [audio[i:i+chunk_len_ms] for i in range(0, len(audio), chunk_len_ms)]
+                if "Sarvam" in engine:
+                    if self.chunking_mode_var.get() == "smart":
+                        smart_len = total_duration_sec / rpm_limit
+                        chunk_len_sec = min(30.0, max(5.0, smart_len))
+                        chunk_len_ms = int(chunk_len_sec * 1000)
+                        self.write_log(f"Smart chunk length calculated: {chunk_len_sec:.2f}s (based on {total_duration_sec:.1f}s file duration and {rpm_limit} RPM)")
+                    else:
+                        chunk_len_sec = min(30.0, max(1.0, chunk_len_sec))
+                        chunk_len_ms = int(chunk_len_sec * 1000)
+                
+                # Check for smart silence cut alignment
+                if self.smart_silence_var.get():
+                    dBFS = audio.dBFS
+                    dynamic_thresh = min(-30, max(-50, dBFS - 12))
+                    self.write_log(f"Aligning cuts to nearest silence (Threshold: {dynamic_thresh:.1f} dBFS, Audio average: {dBFS:.1f} dBFS)...")
+                    chunks = split_audio_smart(audio, chunk_len_ms, silence_thresh=dynamic_thresh)
+                else:
+                    self.write_log("Using strict fixed-time interval chunking...")
+                    chunks = split_audio_fixed(audio, chunk_len_ms)
             else:
-                chunks = [audio]
-                chunk_len_sec = total_duration_sec
+                chunks = [{"audio": audio, "start_sec": 0.0, "duration_sec": total_duration_sec}]
                 
             total_chunks = len(chunks)
             self.write_log(f"Processing {total_chunks} segments via {engine}...")
@@ -568,8 +661,11 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             # Sliding window request history for rate limit tracking
             request_times = []
             
-            for idx, chunk in enumerate(chunks):
-                chunk_start_sec = (idx * chunk_len_sec) if enable_chunking else 0.0
+            for idx, item in enumerate(chunks):
+                chunk = item["audio"]
+                chunk_start_sec = item["start_sec"]
+                chunk_duration_sec = item["duration_sec"]
+                
                 self.after(0, lambda p=((idx+1)/total_chunks): self.progress.set(p))
                 
                 c_file = os.path.join(TEMP_DIR, f"temp_c_{idx}.wav")
@@ -611,7 +707,7 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                                 
                         if resp.status_code == 200:
                             data = resp.json()
-                            segments = data.get("segments", [{"text": data.get("transcript", ""), "start_time_seconds": 0, "end_time_seconds": len(chunk)/1000.0}])
+                            segments = data.get("segments", [{"text": data.get("transcript", ""), "start_time_seconds": 0, "end_time_seconds": chunk_duration_sec}])
                             transcribed = True
                         elif is_quota_error:
                             self.write_log("API rate limit or quota exceeded!")
