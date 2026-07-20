@@ -616,11 +616,11 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
             elif "Business" in plan: rpm_limit = 1000
             elif "Custom" in plan:
                 try: rpm_limit = int(self.sarvam_custom_rpm_var.get().strip())
-                except: rpm_limit = 60
+                except ValueError: rpm_limit = 60
             
             chunk_len_sec = 5.0
             try: chunk_len_sec = float(self.chunk_len_var.get().strip())
-            except: chunk_len_sec = 5.0
+            except ValueError: chunk_len_sec = 5.0
             
             # Setup chunk length and slicing method
             if enable_chunking:
