@@ -7,7 +7,6 @@ Dual-Engine Edition (Sarvam AI & Whisper)
 """
 
 import os
-import sys
 import shutil
 import subprocess
 import threading
