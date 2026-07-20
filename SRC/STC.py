@@ -84,9 +84,13 @@ def detect_hardware_acceleration():
 def extract_audio(video_path, audio_path):
     command = ["ffmpeg", "-y", "-i", video_path, "-map", "0:a:0", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", audio_path]
     try:
-        subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        kwargs = {"capture_output": True, "text": True}
+        if os.name == 'nt':
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        subprocess.run(command, **kwargs)
         return True
-    except: return False
+    except Exception:
+        return False
 
 def check_whisper_model_cached(model_name):
     try:
