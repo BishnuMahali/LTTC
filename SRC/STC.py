@@ -511,9 +511,27 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                     cfg = json.load(f)
                     self.engine_var.set(cfg.get("engine", "Sarvam AI (Cloud)"))
                     self.lang_var.set(cfg.get("lang", "Bengali"))
-                    if "key_enc" in cfg:
-                        decoded_key = base64.b64decode(cfg["key_enc"].encode()).decode()
-                        self.key_var.set(decoded_key)
+
+                    key_loaded = False
+                    try:
+                        import keyring
+                        key = keyring.get_password("SarvamTimedCaptions", "api_key")
+                        if key:
+                            self.key_var.set(key)
+                            key_loaded = True
+                    except Exception:
+                        pass
+
+                    if not key_loaded:
+                        if "api_key" in cfg:
+                            self.key_var.set(cfg["api_key"])
+                        elif "key_enc" in cfg:
+                            try:
+                                decoded_key = base64.b64decode(cfg["key_enc"].encode()).decode()
+                                self.key_var.set(decoded_key)
+                            except Exception:
+                                pass
+
                     if "model" in cfg:
                         self.model_var.set(cfg["model"])
                     self.sarvam_plan_var.set(cfg.get("sarvam_plan", "Starter (60 RPM)"))
@@ -522,7 +540,8 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                     self.chunking_mode_var.set(cfg.get("chunking_mode", "throttle"))
                     self.enable_chunking_var.set(cfg.get("enable_chunking", True))
                     self.smart_silence_var.set(cfg.get("smart_silence", True))
-        except: pass
+        except Exception:
+            pass
 
     def save_settings(self):
         try:
@@ -537,10 +556,40 @@ class STCGui(ctk.CTk, TkinterDnD.DnDWrapper):
                 "enable_chunking": self.enable_chunking_var.get(),
                 "smart_silence": self.smart_silence_var.get()
             }
+
+            # Read existing config to preserve other data if it exists
+            if os.path.exists(CONFIG_FILE):
+                try:
+                    with open(CONFIG_FILE, "r") as f:
+                        old_cfg = json.load(f)
+                        if "api_key" in old_cfg:
+                            cfg["api_key"] = old_cfg["api_key"]
+                except Exception:
+                    pass
+
             key = self.key_var.get().strip()
-            if key: cfg["key_enc"] = base64.b64encode(key.encode()).decode()
+            if key:
+                key_saved = False
+                try:
+                    import keyring
+                    keyring.set_password("SarvamTimedCaptions", "api_key", key)
+                    key_saved = True
+                    # If we successfully saved to keyring, remove it from cfg to prevent plain-text storage
+                    if "api_key" in cfg:
+                        del cfg["api_key"]
+                except Exception:
+                    pass
+
+                if not key_saved:
+                    cfg["api_key"] = key
+
+            # Clean up old key_enc if it exists
+            if "key_enc" in cfg:
+                del cfg["key_enc"]
+
             with open(CONFIG_FILE, "w") as f: json.dump(cfg, f)
-        except: pass
+        except Exception:
+            pass
 
     def write_log(self, msg): self.log_queue.put(msg)
     def process_logs(self):
